@@ -6,3 +6,5 @@ services:
     volumes:
       - .:/app
     tty: true
+    ports:
+      - 8080:8000
