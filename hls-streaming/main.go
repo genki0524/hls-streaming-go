@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"sort"
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
 
@@ -18,14 +18,15 @@ type ProgramItem struct {
 	DurationSec  int32  `firestore:"duration_sec"`
 	Type         string `firestore:"type"`
 	PathTemplate string `firestore:"path_template"`
+	Title        string `firestore:"title"`
 }
 
 type Schedule struct {
 	Programs []ProgramItem `firestore:"programs"`
 }
 
-const SEGMENT_DURATION int = 9
-const PLAYLIST_LENGTH int = 6
+const SEGMENT_DURATION float64 = 12
+const PLAYLIST_LENGTH int = 15
 
 func main() {
 	ctx := context.Background()
@@ -37,28 +38,45 @@ func main() {
 	docRef := client.Collection("schedules").Doc(todayString)
 
 	doc, err := docRef.Get(ctx)
+	var schedule []ProgramItem
+
 	if err != nil {
-		log.Fatalf("ドキュメントの取得に失敗しました: %v", err)
+		// Firestoreからの取得に失敗した場合、テスト用データを使用
+		log.Printf("Firestoreからの取得に失敗: %v", err)
+	} else {
+		var data Schedule
+		if err := doc.DataTo(&data); err != nil {
+			log.Fatalf("データのマッピングに失敗しました: %v", err)
+		}
+		schedule = data.Programs
 	}
 
-	var data Schedule
-	if err := doc.DataTo(&data); err != nil {
-		log.Fatalf("データのマッピングに失敗しました: %v", err)
-	}
-
-	schedule := data.Programs
 	sort.Slice(schedule, func(i, j int) bool {
 		return schedule[i].StartTime < schedule[j].StartTime
 	})
 
-	// router := gin.Default()
+	router := gin.Default()
 
-	// // GET /programs エンドポイントを設定
-	// router.GET("/programs", func(c *gin.Context) {
-	// 	getProgramsHandler(client, ctx, c)
-	// })
+	// HTMLファイルを配信するエンドポイント
+	router.GET("/", func(c *gin.Context) {
+		c.File("./index.html")
+	})
 
-	// router.Run("localhost:8000")
+	// ライブストリーム用のプレイリスト
+	router.GET("/live/video.m3u8", func(c *gin.Context) {
+		getVodPlaylist(c.Writer, c.Request, schedule)
+	})
+
+	// ストリーム状態確認用エンドポイント
+	router.HEAD("/live/status", func(c *gin.Context) {
+		getStreamStatus(c, schedule)
+	})
+
+	// 静的ファイル（画像など）を配信
+	router.Static("/static", "./static")
+
+	log.Println("サーバーを開始します: http://0.0.0.0:8000")
+	router.Run("0.0.0.0:8000")
 }
 
 func initFireStore(ctx context.Context) *firestore.Client {
@@ -76,18 +94,4 @@ func initFireStore(ctx context.Context) *firestore.Client {
 	}
 
 	return client
-}
-
-func getProgramByGlobalSegment(globalSegmentIndex int, schedule []ProgramItem) (ProgramItem, int, error) {
-	currentGlobalIndex := 0
-
-	for _, program := range schedule {
-		programSegments := math.Floor(float64(program.DurationSec) / float64(SEGMENT_DURATION))
-
-		if currentGlobalIndex <= globalSegmentIndex && globalSegmentIndex < currentGlobalIndex+int(programSegments) {
-			programSegmentIndex := globalSegmentIndex - currentGlobalIndex
-			return program, programSegmentIndex, nil
-		}
-	}
-	return ProgramItem{}, 0, fmt.Errorf("globalSegmentIndex is out of range")
 }

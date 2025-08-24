@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HLS Player</title>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 20px; 
+            font-family: Arial, sans-serif; 
+            background: #000; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+        }
+        video { 
+            width: 400px;
+            height: 225px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5); 
+        }
+        .static-image {
+            width: 400px;
+            height: 225px; 
+            border-radius: 8px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            object-fit: cover;
+            display: none;
+        }
+        .message {
+            color: white;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <video id="videoPlayer" width="400" height="225" controls autoplay muted></video>
+        <img id="staticImage" class="static-image" src="/static/images/picture.jpg" alt="放送休止中">
+        <div id="message" class="message" style="display: none;">現在放送中の番組はありません</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        const video = document.getElementById('videoPlayer');
+        const staticImage = document.getElementById('staticImage');
+        const message = document.getElementById('message');
+        const streamUrl = '/live/video.m3u8';
+        const statusUrl = '/live/status';
+        let hls;
+
+        function setupHLS() {
+            if (hls) {
+                hls.destroy();
+            }
+
+            if (Hls.isSupported()) {
+                hls = new Hls({
+                    liveSyncDurationCount: 5,
+                    liveMaxLatencyDurationCount: 10,
+                    liveDurationInfinity: true,
+                    enableWorker: false,
+                    maxBufferLength: 60,
+                    maxMaxBufferLength: 120,
+                    backBufferLength: 30
+                });
+                
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    // 動画が正常に読み込まれた場合
+                    showVideo();
+                    video.play().catch(error => {
+                        console.log('自動再生に失敗しました:', error);
+                    });
+                });
+
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.log('HLSエラー:', data);
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log('ネットワークエラー、再試行します');
+                                setTimeout(() => setupHLS(), 3000);
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.log('メディアエラー、復旧を試行します');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                // その他の致命的エラーの場合、静的画像を表示
+                                showStaticImage();
+                                break;
+                        }
+                    }
+                });
+
+                hls.on(Hls.Events.FRAG_LOADED, function() {
+                    // フラグメント読み込み時の処理は削除
+                });
+
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = streamUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    showVideo();
+                    video.play().catch(error => {
+                        console.log('自動再生に失敗しました:', error);
+                    });
+                });
+                
+                video.addEventListener('error', function() {
+                    showStaticImage();
+                });
+            }
+        }
+
+        function showVideo() {
+            video.style.display = 'block';
+            staticImage.style.display = 'none';
+            message.style.display = 'none';
+        }
+
+        function showStaticImage() {
+            video.style.display = 'none';
+            staticImage.style.display = 'block';
+            message.style.display = 'block';
+        }
+
+        // 初期セットアップ
+        setupHLS();
+
+        // 定期的にストリーム状態をチェック（5秒ごと）
+        setInterval(() => {
+            if (document.hidden) return;
+            
+            fetch(statusUrl, { method: 'HEAD' })
+                .then(response => {
+                    if (response.status === 200) {
+                        // 番組がある場合 → 動画表示（既に表示中なら何もしない）
+                        if (staticImage.style.display !== 'none') {
+                            setupHLS();
+                        }
+                    } else {
+                        // 番組がない場合（204 No Content等） → 静的画像表示
+                        showStaticImage();
+                    }
+                })
+                .catch(() => {
+                    showStaticImage();
+                });
+        }, 5000);  // 5秒間隔に変更
+
+        // ページの可視性が変わった時の処理（頻繁な再セットアップを避ける）
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && staticImage.style.display !== 'none') {
+                // 静的画像が表示中で、ページが表示された場合のみセットアップ
+                setupHLS();
+            }
+        });
+    </script>
+</body>
+</html>
