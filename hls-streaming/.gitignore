@@ -62,5 +62,6 @@ Temporary Items
 
 # End of https://www.toptal.com/developers/gitignore/api/go,macos
 
-stream/*
-images/*
+# Static content exclusions
+static/stream/
+static/images/
