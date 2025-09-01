@@ -96,7 +96,7 @@ func (sm *ScheduleManager) StartPeriodicRefresh(ctx context.Context, interval ti
 	}
 }
 
-const SEGMENT_DURATION float64 = 12
+const SEGMENT_DURATION float64 = 3
 const PLAYLIST_LENGTH int = 15
 
 func main() {
