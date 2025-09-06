@@ -12,24 +12,36 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+/*
+現在の番組と番組内でのセグメント番号を返す
+*/
 func getProgramByGlobalSegment(globalSegmentIndex int, schedule []ProgramItem) (ProgramItem, int) {
 	currentGlobalIndex := 0
 	for _, program := range schedule {
+
+		//番組のセグメント数を計算
 		programSegments := math.Ceil(float64(program.DurationSec) / float64(SEGMENT_DURATION))
 
+		//globalSegmentIndexが番組の範囲内だった場合、現在のプログラムと番組内でのセグメント番号を返す
 		if currentGlobalIndex <= globalSegmentIndex && globalSegmentIndex < currentGlobalIndex+int(programSegments) {
 			programSegmentIndex := globalSegmentIndex - currentGlobalIndex
 			return program, programSegmentIndex
 		}
+
+		//番組のセグメント数分インクリメント
 		currentGlobalIndex += int(programSegments)
 	}
 	return ProgramItem{}, 0
 }
 
+/*
+番組がない時間の静止画像を配信する関数
+*/
 func getStataicImagePlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramItem) {
 	jst := time.FixedZone("JST", 9*60*60)
 	now := time.Now().In(jst)
 
+	//現在時刻から次の番組の開始時間を取得
 	var nextProgramStart *time.Time
 	for _, program := range schedule {
 		startTime, err := time.Parse(time.RFC3339, program.StartTime)
@@ -44,6 +56,7 @@ func getStataicImagePlaylist(w http.ResponseWriter, r *http.Request, schedule []
 		}
 	}
 
+	//次の番組までの残り時間から1セグメントあたりの時間とセグメント数を取得
 	var segmentDuration float64
 	var segmentCount int
 
@@ -119,6 +132,7 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		return
 	}
 
+	//現在の番組が始まるまでに経過したセグメント数
 	totalSegmentsBefore := 0
 	for _, program := range schedule {
 		if program.StartTime == currentProgram.StartTime {
@@ -137,7 +151,7 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 	currentProgramTotalSegments := int(math.Ceil(float64(currentProgram.DurationSec) / SEGMENT_DURATION))
 
 	//プレイリストに含める最初のセグメントのインデックスを取得
-	// 番組内のセグメントのみを含むように制限
+	//番組内のセグメントのみを含むように制限
 	startGlobalIndex := int(math.Max(float64(totalSegmentsBefore), float64(globalCurrentSegment-PLAYLIST_LENGTH+1)))
 	endGlobalIndex := int(math.Min(float64(globalCurrentSegment), float64(totalSegmentsBefore+currentProgramTotalSegments-1)))
 
