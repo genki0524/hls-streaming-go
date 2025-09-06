@@ -82,11 +82,15 @@ func parseM3U8File(filePath string) (*M3U8Playlist, error) {
 	return playlist, scanner.Err()
 }
 
+/*
+番組がない時間の静止画像を配信する関数
+*/
 func getStataicImagePlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramItem) {
 	jst := time.FixedZone("JST", 9*60*60)
 	now := time.Now().In(jst)
 
 	//次の番組の開始時間を取得、存在しない場合はnil
+	//現在時刻から次の番組の開始時間を取得
 	var nextProgramStart *time.Time
 	for _, program := range schedule {
 		startTime, err := time.Parse(time.RFC3339, program.StartTime)
@@ -101,6 +105,7 @@ func getStataicImagePlaylist(w http.ResponseWriter, r *http.Request, schedule []
 		}
 	}
 
+	//次の番組までの残り時間から1セグメントあたりの時間とセグメント数を取得
 	var segmentDuration float64
 	var segmentCount int
 
