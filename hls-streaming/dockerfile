@@ -1,0 +1,9 @@
+FROM golang:1.25.0
+
+WORKDIR /app
+
+COPY ./ /app/
+
+EXPOSE $PORT
+
+CMD ["sh", "-c", "go build -o main . && ./main"]

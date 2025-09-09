@@ -53,7 +53,8 @@ func (sm *ScheduleManager) UpdateSchedule(newSchedule []ProgramItem) {
 
 // Firestoreから番組表を取得して更新する
 func (sm *ScheduleManager) RefreshFromFirestore(ctx context.Context) error {
-	todayString := time.Now().Format("2006-01-02")
+	jst := time.FixedZone("JST", 9*60*60)
+	todayString := time.Now().In(jst).Format("2006-01-02")
 	docRef := sm.client.Collection("schedules").Doc(todayString)
 
 	doc, err := docRef.Get(ctx)
@@ -96,7 +97,7 @@ func (sm *ScheduleManager) StartPeriodicRefresh(ctx context.Context, interval ti
 	}
 }
 
-const SEGMENT_DURATION float64 = 12
+const SEGMENT_DURATION float64 = 3
 const PLAYLIST_LENGTH int = 15
 
 func main() {
@@ -163,8 +164,8 @@ func main() {
 	// 静的ファイル（画像など）を配信
 	router.Static("/static", "./static")
 
-	log.Println("サーバーを開始します: http://0.0.0.0:8000")
-	router.Run("0.0.0.0:8000")
+	log.Println("サーバーを開始します: http://0.0.0.0:8080")
+	router.Run("0.0.0.0:8080")
 }
 
 func initFireStore(ctx context.Context) *firestore.Client {

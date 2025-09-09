@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -12,24 +15,87 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func getProgramByGlobalSegment(globalSegmentIndex int, schedule []ProgramItem) (ProgramItem, int) {
-	currentGlobalIndex := 0
-	for _, program := range schedule {
-		programSegments := math.Ceil(float64(program.DurationSec) / float64(SEGMENT_DURATION))
-
-		if currentGlobalIndex <= globalSegmentIndex && globalSegmentIndex < currentGlobalIndex+int(programSegments) {
-			programSegmentIndex := globalSegmentIndex - currentGlobalIndex
-			return program, programSegmentIndex
-		}
-		currentGlobalIndex += int(programSegments)
-	}
-	return ProgramItem{}, 0
+type M3U8Segment struct {
+	Duration float64
+	Filename string
 }
 
+type M3U8Playlist struct {
+	Version        int
+	TargetDuration int
+	MediaSequence  int
+	PlaylistType   string
+	AllowCache     string
+	Segments       []M3U8Segment
+}
+
+var globalProgram ProgramItem
+
+// スライスのインデックスが有効かどうかをチェックするジェネリクス関数
+func isValidIndex[T any](slice []T, index int) bool {
+	return index >= 0 && index < len(slice)
+}
+
+// m3u8ファイルを読み込んで解析する
+func parseM3U8File(filePath string) (*M3U8Playlist, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	playlist := &M3U8Playlist{}
+	scanner := bufio.NewScanner(file)
+
+	var currentDuration float64
+
+	//m3u8ファイルからヘッダ情報とセグメント情報を取得
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		if strings.HasPrefix(line, "#EXT-X-VERSION:") {
+			version, _ := strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-VERSION:"))
+			playlist.Version = version
+		} else if strings.HasPrefix(line, "#EXT-X-TARGETDURATION:") {
+			duration, _ := strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-TARGETDURATION:"))
+			playlist.TargetDuration = duration
+		} else if strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:") {
+			sequence, _ := strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"))
+			playlist.MediaSequence = sequence
+		} else if strings.HasPrefix(line, "#EXT-X-PLAYLIST-TYPE:") {
+			playlist.PlaylistType = strings.TrimPrefix(line, "#EXT-X-PLAYLIST-TYPE:")
+		} else if strings.HasPrefix(line, "#EXT-X-ALLOW-CACHE:") {
+			playlist.AllowCache = strings.TrimPrefix(line, "#EXT-X-ALLOW-CACHE:")
+		} else if strings.HasPrefix(line, "#EXTINF:") {
+			// #EXTINF:9.000000, の形式から時間を抽出
+			parts := strings.Split(strings.TrimPrefix(line, "#EXTINF:"), ",")
+			if len(parts) > 0 {
+				duration, _ := strconv.ParseFloat(parts[0], 64)
+				currentDuration = duration
+			}
+		} else if line != "" && !strings.HasPrefix(line, "#") {
+			// セグメントファイル名
+			segment := M3U8Segment{
+				Duration: currentDuration,
+				Filename: line,
+			}
+			playlist.Segments = append(playlist.Segments, segment)
+			currentDuration = 0
+		}
+	}
+
+	return playlist, scanner.Err()
+}
+
+/*
+番組がない時間の静止画像を配信する関数
+*/
 func getStataicImagePlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramItem) {
 	jst := time.FixedZone("JST", 9*60*60)
 	now := time.Now().In(jst)
 
+	//次の番組の開始時間を取得、存在しない場合はnil
+	//現在時刻から次の番組の開始時間を取得
 	var nextProgramStart *time.Time
 	for _, program := range schedule {
 		startTime, err := time.Parse(time.RFC3339, program.StartTime)
@@ -44,14 +110,18 @@ func getStataicImagePlaylist(w http.ResponseWriter, r *http.Request, schedule []
 		}
 	}
 
+	//次の番組までの残り時間から1セグメントあたりの時間とセグメント数を取得
 	var segmentDuration float64
 	var segmentCount int
 
+	//静止画を流す時間を計測
 	if nextProgramStart != nil {
+		//次の番組がある場合は、残り時間から取得
 		timeUntilNext := nextProgramStart.Sub(now).Seconds()
 		segmentDuration = math.Min(math.Max(5, timeUntilNext), 30)
 		segmentCount = int(math.Max(1, timeUntilNext/segmentDuration))
 	} else {
+		//次の番組がない場合は固定
 		segmentDuration = 30
 		segmentCount = 10
 	}
@@ -83,9 +153,11 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 
 	var currentProgram *ProgramItem
 	var programStartTime time.Time
+	var nextProgram *ProgramItem
+	currentProgramIndex := -1
 
 	//現在放送されている番組を取得
-	for _, program := range schedule {
+	for index, program := range schedule {
 		startTime, err := time.Parse(time.RFC3339, program.StartTime)
 		if err != nil {
 			continue
@@ -97,8 +169,13 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		if startTimeJST.Before(now) && now.Before(endTime) {
 			currentProgram = &program
 			programStartTime = startTimeJST
+			currentProgramIndex = index
 			break
 		}
+	}
+
+	if currentProgramIndex >= 0 && isValidIndex(schedule, currentProgramIndex+1) {
+		nextProgram = &schedule[currentProgramIndex+1]
 	}
 
 	//番組がない場合は静止画を表示
@@ -107,81 +184,98 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		return
 	}
 
-	//番組が始まってからの経過時間
-	timeInfoPragram := now.Sub(programStartTime).Seconds()
-	//番組が始まってから経過したセグメントの数
-	currentSegmentIndex := int(timeInfoPragram / SEGMENT_DURATION)
+	var m3u8Content []string
 
-	// 番組の終了時間をチェック
-	programEndTime := programStartTime.Add(time.Duration(currentProgram.DurationSec) * time.Second)
-	if now.After(programEndTime) {
+	// 番組が始まってからの経過時間
+	timeInfoProgram := now.Sub(programStartTime).Seconds()
+
+	// PathTemplateからディレクトリパスを抽出 (例: static/stream/hoooope-2025-01-15-copy/video{}.ts -> static/stream/hoooope-2025-01-15-copy/)
+	programDir := filepath.Dir(currentProgram.PathTemplate)
+	m3u8FilePath := filepath.Join(programDir, "video.m3u8")
+
+	log.Printf("m3u8ファイルパス: %s", m3u8FilePath)
+
+	// m3u8ファイルを読み込み
+	playlist, err := parseM3U8File(m3u8FilePath)
+	if err != nil {
+		log.Printf("m3u8ファイルの読み込みに失敗: %v", err)
 		getStataicImagePlaylist(w, r, schedule)
 		return
 	}
 
-	totalSegmentsBefore := 0
-	for _, program := range schedule {
-		if program.StartTime == currentProgram.StartTime {
-			log.Printf("現在の番組を発見: %s", program.StartTime)
+	log.Printf("読み込んだセグメント数: %d", len(playlist.Segments))
+
+	// セグメントの長さを使って現在のセグメントインデックスを計算
+	var accumulatedTime float64 = 0
+	var currentSegmentIndex int = 0
+
+	for i, segment := range playlist.Segments {
+		if accumulatedTime+segment.Duration > timeInfoProgram {
+			currentSegmentIndex = i
 			break
 		}
-		segmentCount := int(math.Ceil(float64(program.DurationSec) / SEGMENT_DURATION))
-		totalSegmentsBefore += segmentCount
-		log.Printf("スキップした番組: %s, セグメント数: %d", program.StartTime, segmentCount)
+		accumulatedTime += segment.Duration
+		currentSegmentIndex = i + 1
 	}
 
-	//全体での経過したセグメントの数
-	globalCurrentSegment := totalSegmentsBefore + currentSegmentIndex
+	// プレイリストに含めるセグメントの範囲を決定
+	startIndex := int(math.Max(0, float64(currentSegmentIndex-PLAYLIST_LENGTH+1)))
+	endIndex := int(math.Min(float64(currentSegmentIndex), float64(len(playlist.Segments)-1)))
 
-	// 現在の番組の総セグメント数
-	currentProgramTotalSegments := int(math.Ceil(float64(currentProgram.DurationSec) / SEGMENT_DURATION))
-
-	//プレイリストに含める最初のセグメントのインデックスを取得
-	// 番組内のセグメントのみを含むように制限
-	startGlobalIndex := int(math.Max(float64(totalSegmentsBefore), float64(globalCurrentSegment-PLAYLIST_LENGTH+1)))
-	endGlobalIndex := int(math.Min(float64(globalCurrentSegment), float64(totalSegmentsBefore+currentProgramTotalSegments-1)))
-
-	var m3u8Content []string
+	// HLSプレイリストを生成
 	m3u8Content = append(m3u8Content, "#EXTM3U")
 	m3u8Content = append(m3u8Content, "#EXT-X-VERSION:3")
-	m3u8Content = append(m3u8Content, "#EXT-X-TARGETDURATION:"+strconv.Itoa(int(SEGMENT_DURATION)))
-	m3u8Content = append(m3u8Content, "#EXT-X-MEDIA-SEQUENCE:"+strconv.Itoa(startGlobalIndex))
+	m3u8Content = append(m3u8Content, "#EXT-X-TARGETDURATION:"+strconv.Itoa(playlist.TargetDuration))
+	m3u8Content = append(m3u8Content, "#EXT-X-MEDIA-SEQUENCE:"+strconv.Itoa(startIndex))
 	m3u8Content = append(m3u8Content, "#EXT-X-ALLOW-CACHE:YES")
 
-	var lastProgram *ProgramItem
-	for globalIndex := startGlobalIndex; globalIndex <= endGlobalIndex; globalIndex++ {
-		segmentProgram, programSegmentIndex := getProgramByGlobalSegment(globalIndex, schedule)
+	for i := startIndex; i <= endIndex && i < len(playlist.Segments); i++ {
+		segment := playlist.Segments[i]
+		m3u8Content = append(m3u8Content, fmt.Sprintf("#EXTINF:%.1f,", segment.Duration))
 
-		if segmentProgram == (ProgramItem{}) {
-			continue
-		}
-
-		// 現在の番組以外のセグメントは含めない
-		if segmentProgram.StartTime != currentProgram.StartTime {
-			continue
-		}
-
-		if lastProgram != nil && *lastProgram != segmentProgram {
-			m3u8Content = append(m3u8Content, "#EXT-X-DISCONTINUITY")
-		}
-
-		m3u8Content = append(m3u8Content, fmt.Sprintf("#EXTINF:%.1f,", SEGMENT_DURATION))
-
-		// セグメントファイル名を生成（3桁の0埋め）
-		segmentFilename := strings.Replace(segmentProgram.PathTemplate, "{}", fmt.Sprintf("%03d", programSegmentIndex), 1)
-		absoluteURL := "/" + segmentFilename
+		// セグメントのパスを絶対URLに変換
+		segmentPath := filepath.Join(programDir, segment.Filename)
+		absoluteURL := "/" + segmentPath
 		m3u8Content = append(m3u8Content, absoluteURL)
+	}
 
-		lastProgram = &segmentProgram
+	if endIndex == len(playlist.Segments)-1 && (endIndex+1)-startIndex != PLAYLIST_LENGTH && nextProgram != nil {
+		// 不連続性を示すタグを追加
+		m3u8Content = append(m3u8Content, "#EXT-X-DISCONTINUITY")
+
+		// 次の番組のセグメントを追加してPLAYLIST_LENGTHに合わせる
+		neededSegments := PLAYLIST_LENGTH - ((endIndex + 1) - startIndex)
+
+		// 次の番組のディレクトリパスを取得
+		nextProgramDir := filepath.Dir(nextProgram.PathTemplate)
+		nextM3u8FilePath := filepath.Join(nextProgramDir, "video.m3u8")
+
+		// 次の番組のm3u8ファイルを読み込み
+		nextPlaylist, err := parseM3U8File(nextM3u8FilePath)
+		if err != nil {
+			log.Printf("次の番組のm3u8ファイルの読み込みに失敗: %v", err)
+		} else {
+			// 必要な数だけ次の番組のセグメントを追加
+			for i := 0; i < neededSegments && i < len(nextPlaylist.Segments); i++ {
+				nextSegment := nextPlaylist.Segments[i]
+				m3u8Content = append(m3u8Content, fmt.Sprintf("#EXTINF:%.1f,", nextSegment.Duration))
+
+				// 次の番組のセグメントパスを絶対URLに変換
+				nextSegmentPath := filepath.Join(nextProgramDir, nextSegment.Filename)
+				nextAbsoluteURL := "/" + nextSegmentPath
+				m3u8Content = append(m3u8Content, nextAbsoluteURL)
+			}
+		}
 	}
 
 	finalContent := strings.Join(m3u8Content, "\n") + "\n"
+
+	fmt.Printf("HLSプレイリスト :%v", finalContent)
 
 	// Set response headers
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(finalContent))
-
 }
 
 func getStreamStatus(c *gin.Context, schedule []ProgramItem) {
