@@ -31,6 +31,11 @@ type M3U8Playlist struct {
 
 var globalProgram ProgramItem
 
+// スライスのインデックスが有効かどうかをチェックするジェネリクス関数
+func isValidIndex[T any](slice []T, index int) bool {
+	return index >= 0 && index < len(slice)
+}
+
 // m3u8ファイルを読み込んで解析する
 func parseM3U8File(filePath string) (*M3U8Playlist, error) {
 	file, err := os.Open(filePath)
@@ -136,8 +141,6 @@ func getStataicImagePlaylist(w http.ResponseWriter, r *http.Request, schedule []
 
 	finalContent := strings.Join(m3u8Content, "\n") + "\n"
 
-	fmt.Printf("HLSプレイリスト :%v", finalContent)
-
 	// Set response headers
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.WriteHeader(http.StatusOK)
@@ -150,9 +153,11 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 
 	var currentProgram *ProgramItem
 	var programStartTime time.Time
+	var nextProgram *ProgramItem
+	currentProgramIndex := -1
 
 	//現在放送されている番組を取得
-	for _, program := range schedule {
+	for index, program := range schedule {
 		startTime, err := time.Parse(time.RFC3339, program.StartTime)
 		if err != nil {
 			continue
@@ -164,8 +169,13 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		if startTimeJST.Before(now) && now.Before(endTime) {
 			currentProgram = &program
 			programStartTime = startTimeJST
+			currentProgramIndex = index
 			break
 		}
+	}
+
+	if currentProgramIndex >= 0 && isValidIndex(schedule, currentProgramIndex+1) {
+		nextProgram = &schedule[currentProgramIndex+1]
 	}
 
 	//番組がない場合は静止画を表示
@@ -175,11 +185,6 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 	}
 
 	var m3u8Content []string
-
-	if globalProgram != *currentProgram {
-		globalProgram = *currentProgram
-		m3u8Content = append(m3u8Content, "#EXT-X-DISCONTINUITY")
-	}
 
 	// 番組が始まってからの経過時間
 	timeInfoProgram := now.Sub(programStartTime).Seconds()
@@ -232,6 +237,35 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		segmentPath := filepath.Join(programDir, segment.Filename)
 		absoluteURL := "/" + segmentPath
 		m3u8Content = append(m3u8Content, absoluteURL)
+	}
+
+	if endIndex == len(playlist.Segments)-1 && (endIndex+1)-startIndex != PLAYLIST_LENGTH && nextProgram != nil {
+		// 不連続性を示すタグを追加
+		m3u8Content = append(m3u8Content, "#EXT-X-DISCONTINUITY")
+
+		// 次の番組のセグメントを追加してPLAYLIST_LENGTHに合わせる
+		neededSegments := PLAYLIST_LENGTH - ((endIndex + 1) - startIndex)
+
+		// 次の番組のディレクトリパスを取得
+		nextProgramDir := filepath.Dir(nextProgram.PathTemplate)
+		nextM3u8FilePath := filepath.Join(nextProgramDir, "video.m3u8")
+
+		// 次の番組のm3u8ファイルを読み込み
+		nextPlaylist, err := parseM3U8File(nextM3u8FilePath)
+		if err != nil {
+			log.Printf("次の番組のm3u8ファイルの読み込みに失敗: %v", err)
+		} else {
+			// 必要な数だけ次の番組のセグメントを追加
+			for i := 0; i < neededSegments && i < len(nextPlaylist.Segments); i++ {
+				nextSegment := nextPlaylist.Segments[i]
+				m3u8Content = append(m3u8Content, fmt.Sprintf("#EXTINF:%.1f,", nextSegment.Duration))
+
+				// 次の番組のセグメントパスを絶対URLに変換
+				nextSegmentPath := filepath.Join(nextProgramDir, nextSegment.Filename)
+				nextAbsoluteURL := "/" + nextSegmentPath
+				m3u8Content = append(m3u8Content, nextAbsoluteURL)
+			}
+		}
 	}
 
 	finalContent := strings.Join(m3u8Content, "\n") + "\n"
