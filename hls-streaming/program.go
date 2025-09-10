@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/genki0524/hls_striming_go/crud"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -190,13 +192,22 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 	timeInfoProgram := now.Sub(programStartTime).Seconds()
 
 	// PathTemplateからディレクトリパスを抽出 (例: static/stream/hoooope-2025-01-15-copy/video{}.ts -> static/stream/hoooope-2025-01-15-copy/)
-	programDir := filepath.Dir(currentProgram.PathTemplate)
-	m3u8FilePath := filepath.Join(programDir, "video.m3u8")
+	// programDir := filepath.Dir(currentProgram.PathTemplate)
+	// m3u8FilePath := filepath.Join(programDir, "video.m3u8")
 
-	log.Printf("m3u8ファイルパス: %s", m3u8FilePath)
+	// log.Printf("m3u8ファイルパス: %s", m3u8FilePath)
 
 	// m3u8ファイルを読み込み
-	playlist, err := parseM3U8File(m3u8FilePath)
+	// playlist, err := parseM3U8File(m3u8FilePath)
+
+	bucket := "generic-a-and-g-storage"
+	// todayString := time.Now().In(jst).Format("2006-01-02")
+	todayString := "2025-09-09"
+	programName := currentProgram.Title
+	credentialsFilePath := "credentials/gcs_key.json"
+
+	playlist, err := crud.CreateSignedM3u8(bucket, todayString, programName, credentialsFilePath)
+
 	if err != nil {
 		log.Printf("m3u8ファイルの読み込みに失敗: %v", err)
 		getStataicImagePlaylist(w, r, schedule)
@@ -234,9 +245,9 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		m3u8Content = append(m3u8Content, fmt.Sprintf("#EXTINF:%.1f,", segment.Duration))
 
 		// セグメントのパスを絶対URLに変換
-		segmentPath := filepath.Join(programDir, segment.Filename)
-		absoluteURL := "/" + segmentPath
-		m3u8Content = append(m3u8Content, absoluteURL)
+		// segmentPath := filepath.Join(programDir, segment.Filename)
+		// absoluteURL := "/" + segmentPath
+		m3u8Content = append(m3u8Content, segment.Filename)
 	}
 
 	if endIndex == len(playlist.Segments)-1 && (endIndex+1)-startIndex != PLAYLIST_LENGTH && nextProgram != nil {
@@ -270,7 +281,7 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 
 	finalContent := strings.Join(m3u8Content, "\n") + "\n"
 
-	fmt.Printf("HLSプレイリスト :%v", finalContent)
+	fmt.Println(finalContent)
 
 	// Set response headers
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")

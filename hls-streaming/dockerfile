@@ -6,4 +6,8 @@ COPY ./ /app/
 
 EXPOSE $PORT
 
+RUN apt update &&\
+    apt install -y ffmpeg &&\
+    rm -rf /var/lib/apt/lists/*
+
 CMD ["sh", "-c", "go build -o main . && ./main"]
