@@ -1,4 +1,4 @@
-FROM golang:1.25.0
+FROM golang:1.25-alpine
 
 WORKDIR /app
 
@@ -6,8 +6,10 @@ COPY ./ /app/
 
 EXPOSE $PORT
 
-RUN apt update &&\
-    apt install -y ffmpeg &&\
-    rm -rf /var/lib/apt/lists/*
+RUN go build -o main .
 
-CMD ["sh", "-c", "go build -o main . && ./main"]
+RUN apk update &&\
+    apk add --no-cache ffmpeg &&\
+    rm -rf /var/cache/apk/*
+
+CMD ["./main"]
