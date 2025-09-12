@@ -2,9 +2,9 @@ package crud
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"testing"
-	"fmt"
 )
 
 func TestUpload(t *testing.T) {
@@ -41,7 +41,7 @@ func TestUpload(t *testing.T) {
 	}
 
 	// uploadFile関数を実行
-	err = uploadFile(&buf, bucket, object, credentialsFilePath)
+	err = uploadFile(&buf, bucket, object)
 
 	// エラーハンドリング（実際のGCSに接続するため、接続エラーは予想される）
 	if err != nil {
@@ -61,11 +61,10 @@ func TestUpload(t *testing.T) {
 func TestDownloadIntoMemory(t *testing.T) {
 	bucket := "generic-a-and-g-storage"
 	object := "2025-09-09/minecraft_1/video.m3u8"
-	credentialsFilePath := "../credentials/gcs_key.json"
 
-	data,err := downloadFileIntoMemory(bucket,object,credentialsFilePath)
+	data, err := downloadFileIntoMemory(bucket, object)
 	if err != nil {
-		fmt.Printf("downloadFileIntoMemory: %v",err)
+		fmt.Printf("downloadFileIntoMemory: %v", err)
 	}
 	fmt.Println(string(data))
 }
@@ -73,11 +72,10 @@ func TestDownloadIntoMemory(t *testing.T) {
 func TestCreateSignaturedUrl(t *testing.T) {
 	bucket := "generic-a-and-g-storage"
 	object := "2025-09-09/minecraft_1/video.m3u8"
-	credentialsFilePath := "../credentials/gcs_key.json"
 
-	url,err := createSignaturedUrl(bucket,object,credentialsFilePath)
+	url, err := createSignaturedUrl(bucket, object)
 	if err != nil {
-		fmt.Printf("createSignaturedUrl: %v",err)
+		fmt.Printf("createSignaturedUrl: %v", err)
 	}
 	fmt.Println(url)
 }
@@ -86,7 +84,6 @@ func TestCreateSignedM3u8(t *testing.T) {
 	bucket := "generic-a-and-g-storage"
 	date := "2025-09-09"
 	programName := "minecraft_1"
-	credentialsFilePath := "../credentials/gcs_key.json"
 
-	createSignedM3u8(bucket,date,programName,credentialsFilePath)
+	CreateSignedM3u8(bucket, date, programName)
 }

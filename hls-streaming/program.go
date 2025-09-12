@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/genki0524/hls_striming_go/crud"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 type M3U8Segment struct {
@@ -191,22 +191,16 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 	// 番組が始まってからの経過時間
 	timeInfoProgram := now.Sub(programStartTime).Seconds()
 
-	// PathTemplateからディレクトリパスを抽出 (例: static/stream/hoooope-2025-01-15-copy/video{}.ts -> static/stream/hoooope-2025-01-15-copy/)
-	// programDir := filepath.Dir(currentProgram.PathTemplate)
-	// m3u8FilePath := filepath.Join(programDir, "video.m3u8")
+	if err := godotenv.Load(".env"); err != nil {
+		fmt.Printf("読み込みができませんでした: %v", err)
+	}
 
-	// log.Printf("m3u8ファイルパス: %s", m3u8FilePath)
-
-	// m3u8ファイルを読み込み
-	// playlist, err := parseM3U8File(m3u8FilePath)
-
-	bucket := "generic-a-and-g-storage"
+	bucket := os.Getenv("BUCKET")
 	// todayString := time.Now().In(jst).Format("2006-01-02")
 	todayString := "2025-09-09"
 	programName := currentProgram.Title
-	credentialsFilePath := "credentials/gcs_key.json"
 
-	playlist, err := crud.CreateSignedM3u8(bucket, todayString, programName, credentialsFilePath)
+	playlist, err := crud.CreateSignedM3u8(bucket, todayString, programName)
 
 	if err != nil {
 		log.Printf("m3u8ファイルの読み込みに失敗: %v", err)
@@ -245,8 +239,6 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		m3u8Content = append(m3u8Content, fmt.Sprintf("#EXTINF:%.1f,", segment.Duration))
 
 		// セグメントのパスを絶対URLに変換
-		// segmentPath := filepath.Join(programDir, segment.Filename)
-		// absoluteURL := "/" + segmentPath
 		m3u8Content = append(m3u8Content, segment.Filename)
 	}
 
@@ -258,11 +250,13 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 		neededSegments := PLAYLIST_LENGTH - ((endIndex + 1) - startIndex)
 
 		// 次の番組のディレクトリパスを取得
-		nextProgramDir := filepath.Dir(nextProgram.PathTemplate)
-		nextM3u8FilePath := filepath.Join(nextProgramDir, "video.m3u8")
+		// nextProgramDir := filepath.Dir(nextProgram.PathTemplate)
+		// nextM3u8FilePath := filepath.Join(nextProgramDir, "video.m3u8")
 
 		// 次の番組のm3u8ファイルを読み込み
-		nextPlaylist, err := parseM3U8File(nextM3u8FilePath)
+		// nextPlaylist, err := parseM3U8File(nextM3u8FilePath)
+		nextPlaylist, err := crud.CreateSignedM3u8(bucket, todayString, nextProgram.Title)
+
 		if err != nil {
 			log.Printf("次の番組のm3u8ファイルの読み込みに失敗: %v", err)
 		} else {
@@ -272,16 +266,14 @@ func getVodPlaylist(w http.ResponseWriter, r *http.Request, schedule []ProgramIt
 				m3u8Content = append(m3u8Content, fmt.Sprintf("#EXTINF:%.1f,", nextSegment.Duration))
 
 				// 次の番組のセグメントパスを絶対URLに変換
-				nextSegmentPath := filepath.Join(nextProgramDir, nextSegment.Filename)
-				nextAbsoluteURL := "/" + nextSegmentPath
-				m3u8Content = append(m3u8Content, nextAbsoluteURL)
+				// nextSegmentPath := filepath.Join(nextProgramDir, nextSegment.Filename)
+				// nextAbsoluteURL := "/" + nextSegmentPath
+				m3u8Content = append(m3u8Content, nextSegment.Filename)
 			}
 		}
 	}
 
 	finalContent := strings.Join(m3u8Content, "\n") + "\n"
-
-	fmt.Println(finalContent)
 
 	// Set response headers
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")

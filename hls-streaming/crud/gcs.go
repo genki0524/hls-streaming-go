@@ -9,14 +9,13 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"google.golang.org/api/option"
 
 	"github.com/genki0524/hls_striming_go/utils/program"
 )
 
-func uploadFile(w io.Writer, bucket, object string, credentialsFilePath string) error {
+func uploadFile(w io.Writer, bucket, object string) error {
 	ctx := context.Background()
-	client, err := storage.NewClient(ctx, option.WithCredentialsFile(credentialsFilePath))
+	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return fmt.Errorf("storage.NewClient: %w", err)
 	}
@@ -46,9 +45,9 @@ func uploadFile(w io.Writer, bucket, object string, credentialsFilePath string) 
 	return nil
 }
 
-func downloadFileIntoMemory(bucket, object string, credentialsFilePath string) ([]byte, error) {
+func downloadFileIntoMemory(bucket, object string) ([]byte, error) {
 	ctx := context.Background()
-	client, err := storage.NewClient(ctx, option.WithCredentialsFile(credentialsFilePath))
+	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("storage.NewClient: %w", err)
 	}
@@ -70,10 +69,10 @@ func downloadFileIntoMemory(bucket, object string, credentialsFilePath string) (
 	return data, nil
 }
 
-func createSignaturedUrl(bucket, object string, credentialsFilePath string) (string, error) {
+func createSignaturedUrl(bucket, object string) (string, error) {
 	expiresTime := 3 * time.Minute
 	ctx := context.Background()
-	client, err := storage.NewClient(ctx, option.WithCredentialsFile(credentialsFilePath))
+	client, err := storage.NewClient(ctx)
 	if err != nil {
 		fmt.Println(fmt.Errorf("storage.NewClient: %w", err))
 		return "", err
@@ -92,9 +91,9 @@ func createSignaturedUrl(bucket, object string, credentialsFilePath string) (str
 	return u, nil
 }
 
-func CreateSignedM3u8(bucket, date string, programName string, credentialsFilePath string) (*program.M3U8Playlist, error) {
+func CreateSignedM3u8(bucket, date string, programName string) (*program.M3U8Playlist, error) {
 	resourcePath := date + "/" + programName
-	m3u8file, err := downloadFileIntoMemory(bucket, resourcePath+"/video.m3u8", credentialsFilePath)
+	m3u8file, err := downloadFileIntoMemory(bucket, resourcePath+"/video.m3u8")
 	if err != nil {
 		fmt.Errorf("downloadFileIntoMemory: %v", err)
 		return &program.M3U8Playlist{}, err
@@ -108,7 +107,7 @@ func CreateSignedM3u8(bucket, date string, programName string, credentialsFilePa
 
 	for index, segment := range playlist.Segments {
 		fileName := segment.Filename
-		url, err := createSignaturedUrl(bucket, resourcePath+"/"+fileName, credentialsFilePath)
+		url, err := createSignaturedUrl(bucket, resourcePath+"/"+fileName)
 		if err != nil {
 			fmt.Errorf("createSignaturedUrl: %v", err)
 		}
