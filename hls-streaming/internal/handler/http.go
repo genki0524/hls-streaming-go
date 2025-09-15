@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/genki0524/hls_striming_go/internal/domain"
 	"github.com/genki0524/hls_striming_go/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -28,6 +29,7 @@ func (h *HTTPHandler) SetupRoutes(router *gin.Engine) {
 	router.HEAD("/live/status", h.getStreamStatus)
 	router.POST("/api/refresh-schedule", h.refreshSchedule)
 	router.GET("/api/schedule", h.getSchedule)
+	router.POST("/api/schedule", h.postSchedule)
 	router.Static("/static", "./static")
 }
 
@@ -76,5 +78,33 @@ func (h *HTTPHandler) getSchedule(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"schedule": schedule,
 		"count":    len(schedule),
+	})
+}
+
+func (h *HTTPHandler) postSchedule(c *gin.Context) {
+	date := c.Query("date")
+	if date == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "dateクエリパラメータが必要です"})
+		return
+	}
+
+	var programItem domain.ProgramItem
+	if err := c.ShouldBindJSON(&programItem); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "リクエストボディが不正です: " + err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := h.scheduleService.AddProgramToSchedule(ctx, programItem, date); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "番組の追加に失敗しました: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "番組を追加しました",
+		"program": programItem,
+		"date":    date,
 	})
 }

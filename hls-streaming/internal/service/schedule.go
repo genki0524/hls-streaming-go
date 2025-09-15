@@ -52,6 +52,21 @@ func (s *ScheduleService) RefreshFromRepository(ctx context.Context) error {
 	return nil
 }
 
+func (s *ScheduleService) AddProgramToSchedule(ctx context.Context, programItem domain.ProgramItem, date string) error {
+	if err := s.repository.PostSchedule(ctx, programItem, date); err != nil {
+		log.Printf("番組の追加に失敗: %v", err)
+		return err
+	}
+
+	// 追加後にスケジュールをリフレッシュして最新状態を取得
+	if err := s.RefreshFromRepository(ctx); err != nil {
+		log.Printf("番組追加後のリフレッシュに失敗: %v", err)
+		return err
+	}
+
+	return nil
+}
+
 func (s *ScheduleService) StartPeriodicRefresh(ctx context.Context, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

@@ -19,6 +19,7 @@ type Schedule struct {
 
 type ScheduleRepository interface {
 	GetScheduleByDate(ctx context.Context, date string) (*Schedule, error)
+	PostSchedule(ctx context.Context, request ProgramItem, date string) error
 }
 
 func (p *ProgramItem) GetStartTime() (time.Time, error) {
