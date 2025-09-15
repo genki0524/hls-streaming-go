@@ -63,7 +63,6 @@ Temporary Items
 # End of https://www.toptal.com/developers/gitignore/api/go,macos
 
 # Static content exclusions
-hls-streaming/static/stream/
-hls-streaming/static/images/
+hls-streaming/bin/server
 
-hls-streaming/main
+CLAUDE.md

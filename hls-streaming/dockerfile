@@ -6,10 +6,8 @@ COPY ./ /app/
 
 EXPOSE $PORT
 
-RUN go build -o main .
-
 RUN apk update &&\
     apk add --no-cache ffmpeg &&\
     rm -rf /var/cache/apk/*
 
-CMD ["./main"]
+CMD ["sh", "-c", "go build -o ./bin/server ./cmd/server/main.go && ./bin/server"]
