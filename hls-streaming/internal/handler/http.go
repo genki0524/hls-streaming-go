@@ -88,7 +88,7 @@ func (h *HTTPHandler) postSchedule(c *gin.Context) {
 		return
 	}
 
-	var programItem domain.ProgramItem
+	var programItem domain.RequestProgramItem
 	if err := c.ShouldBindJSON(&programItem); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "リクエストボディが不正です: " + err.Error()})
 		return

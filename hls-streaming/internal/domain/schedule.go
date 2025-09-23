@@ -5,6 +5,18 @@ import (
 	"time"
 )
 
+type RequestProgramItem struct {
+	StartTime    string `json:"start_time"`
+	DurationSec  int32  `json:"duration_sec"`
+	Type         string `json:"type"`
+	PathTemplate string `json:"path_template"`
+	Title        string `json:"title"`
+}
+
+type RequestSchedule struct {
+	Programs []RequestProgramItem `json:"programs"`
+}
+
 type ProgramItem struct {
 	StartTime    string `firestore:"start_time"`
 	DurationSec  int32  `firestore:"duration_sec"`
@@ -19,7 +31,7 @@ type Schedule struct {
 
 type ScheduleRepository interface {
 	GetScheduleByDate(ctx context.Context, date string) (*Schedule, error)
-	PostSchedule(ctx context.Context, request ProgramItem, date string) error
+	PostSchedule(ctx context.Context, request RequestProgramItem, date string) error
 }
 
 func (p *ProgramItem) GetStartTime() (time.Time, error) {

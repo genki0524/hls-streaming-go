@@ -38,15 +38,18 @@ func (r *FirestoreScheduleRepository) GetScheduleByDate(ctx context.Context, dat
 	return &data, nil
 }
 
-func (r *FirestoreScheduleRepository) PostSchedule(ctx context.Context, request domain.ProgramItem, date string) error {
+func (r *FirestoreScheduleRepository) PostSchedule(ctx context.Context, request domain.RequestProgramItem, date string) error {
 	docRef := r.client.Collection("schedules").Doc(date)
 
 	// 既存のスケジュールを取得
 	doc, err := docRef.Get(ctx)
+
+	program := request2ProgramItem(request)
+
 	if err != nil {
 		// ドキュメントが存在しない場合は新規作成
 		schedule := domain.Schedule{
-			Programs: []domain.ProgramItem{request},
+			Programs: []domain.ProgramItem{program},
 		}
 		_, err = docRef.Set(ctx, schedule)
 		return err
@@ -58,8 +61,18 @@ func (r *FirestoreScheduleRepository) PostSchedule(ctx context.Context, request 
 		return err
 	}
 
-	existingSchedule.Programs = append(existingSchedule.Programs, request)
+	existingSchedule.Programs = append(existingSchedule.Programs, program)
 
 	_, err = docRef.Set(ctx, existingSchedule)
 	return err
+}
+
+func request2ProgramItem(request domain.RequestProgramItem) domain.ProgramItem {
+	return domain.ProgramItem{
+		StartTime:    request.StartTime,
+		DurationSec:  request.DurationSec,
+		Type:         request.Type,
+		PathTemplate: request.PathTemplate,
+		Title:        request.Title,
+	}
 }
