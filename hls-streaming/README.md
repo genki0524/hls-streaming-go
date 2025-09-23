@@ -1,42 +1,66 @@
 # HLS Streaming Server
 
-HLS（HTTP Live Streaming）を使用したライブストリーミングサーバーです。Google Cloud Firestoreと連携して、スケジュールに基づいた動画配信を行います。
+HLS（HTTP Live Streaming）を使用したライブストリーミングサーバーです。Google Cloud Firestore、Google Cloud Storage（GCS）と連携して、スケジュールに基づいた動画配信を行います。Clean Architectureの設計原則に基づいて構築され、プロダクション対応のアプリケーションです。
 
 ## 特徴
 
 - HLS形式での動画ストリーミング配信
 - Google Cloud Firestoreを使用したスケジュール管理
-- リアルタイムでの番組切り替え
+- Google Cloud Storageからの動画ファイル配信
+- 署名付きURL（3分有効期限）によるセキュアなファイルアクセス
+- リアルタイムでの番組切り替え（番組間の継続性保証）
 - 静的画像表示（番組間の待機時間）
 - WebベースのHLSプレイヤー
+- Clean Architecture設計による高い保守性
+- VOD（Video On Demand）対応
+- API経由での番組追加機能
 
-## ディレクトリ構成
+## アーキテクチャ
+
+### 設計原則
+- **Clean Architecture**: レイヤー分離による高い保守性と拡張性
+- **Domain-Driven Design (DDD)**: ビジネスロジックの中央集権化
+- **Dependency Injection**: 疎結合設計による高いテスタビリティ
+- **Repository Pattern**: データアクセス層の抽象化
+- **Interface Segregation**: 適切な抽象化による依存関係の制御
+
+### ディレクトリ構成
 
 ```
-hls-streaming/
-├── docker-compose.yaml         # Docker Compose設定ファイル
-├── go.mod                     # Go モジュール定義
-├── go.sum                     # Go モジュール依存関係
-├── main.go                    # メインアプリケーション
-├── program.go                 # 番組管理ロジック
-├── index.html                 # HLSプレイヤーのWebページ
-├── .env                       # 環境変数設定ファイル（要作成）
-├── .gitignore                 # Git除外ファイル設定
-├── credentials/               # Google Cloud認証情報
-│   └── *.json                 # サービスアカウントキーファイル
-└── static/                    # 静的ファイル
-    ├── images/                # 画像ファイル（Git管理外）
-    │   └── *.jpg, *.png       # 静止画・待機画面用画像
-    └── stream/                # HLSストリームファイル（Git管理外）
-        ├── [番組名]/          # 各番組ディレクトリ
-        │   ├── *.mp4          # 元動画ファイル
-        │   ├── video.m3u8     # HLSプレイリストファイル
-        │   └── video*.ts      # HLSセグメントファイル
-        └── [番組名]/          # 別の番組ディレクトリ
-            ├── *.mp4          # 元動画ファイル
-            ├── video.m3u8     # HLSプレイリストファイル
-            └── video*.ts      # HLSセグメントファイル
+hls-streaming/                       # プロジェクトルート
+├── cmd/                             # アプリケーションエントリーポイント
+│   └── server/
+│       └── main.go                  # 依存性注入・サーバー起動・設定初期化
+├── internal/                        # プライベートアプリケーションコード
+│   ├── domain/                      # ⭐ ドメインレイヤー（ビジネスロジック中核）
+│   │   ├── schedule.go              # 番組スケジュール・時間計算・検索ロジック
+│   │   └── playlist.go              # M3U8解析・セグメント管理・HLS仕様対応
+│   ├── repository/                  # 📊 データアクセス層（インフラ抽象化）
+│   │   ├── firestore.go             # Firestore番組データ取得・ソート処理
+│   │   └── gcs.go                   # GCSファイル操作・署名付きURL・ダウンロード
+│   ├── service/                     # 🔧 アプリケーションサービス層（ビジネスフロー）
+│   │   ├── schedule.go              # 番組管理・定期更新・並行処理・状態管理
+│   │   └── streaming.go             # ストリーミング・プレイリスト生成・切り替え制御
+│   ├── handler/                     # 🌐 プレゼンテーション層（HTTP境界）
+│   │   └── http.go                  # RESTエンドポイント・ルーティング・JSON変換
+│   └── media/                       # 🎬 メディア処理層（外部ツール連携）
+│       └── ffmpeg.go                # FFmpegラッパー・HLS変換・エンコーディング
+├── pkg/                             # 再利用可能パブリックライブラリ
+│   └── config/
+│       └── config.go                # 環境変数管理・設定検証・デフォルト値
+├── test/                            # 🧪 テストスイート（品質保証）
+│   ├── domain_test.go               # ドメインロジック単体テスト・ビジネスルール検証
+│   ├── repository_test.go           # データアクセス統合テスト・外部連携
+│   └── media_test.go                # メディア処理テスト・FFmpeg動作確認
+├── credentials/                     # 🔐 認証情報（Git管理対象外推奨）
+├── docker-compose.yaml             # 🐳 開発環境構築・サービス連携定義
+├── dockerfile                       # 📦 本番イメージ・マルチステージビルド
+├── gcs_cors_setting.json           # 🌍 クロスオリジン設定・セキュリティポリシー
+└── index.html                       # 💻 デモフロントエンド・API動作確認
 ```
+
+**依存関係フロー**: Handler → Service → Repository → Domain
+**データフロー**: GCS/Firestore → Repository → Service → Handler → Client
 
 ## 起動に必要なこと
 
@@ -46,14 +70,23 @@ hls-streaming/
 
 ```env
 PROJECT_ID=your-google-cloud-project-id
+BUCKET=your-gcs-bucket-name
+PORT=8080
 ```
 
-### 2. Google Cloud Firestore の設定
+### 2. Google Cloud の設定
 
+#### Google Cloud Firestore
 1. Google Cloud Projectを作成
 2. Firestoreを有効化
 3. サービスアカウントキーを作成し、`credentials/` ディレクトリに配置
 4. 環境変数 `GOOGLE_APPLICATION_CREDENTIALS` を設定（オプション）
+
+#### Google Cloud Storage
+1. GCSバケットを作成
+2. 動画ファイルをバケットにアップロード（日付/番組名の階層構造）
+3. CORS設定を適用（`gcs_cors_setting.json` を使用）
+4. サービスアカウントにStorage Object Viewerロールを付与
 
 ### 3. Firestoreデータ構造
 
@@ -84,8 +117,25 @@ PROJECT_ID=your-google-cloud-project-id
 
 ### 4. 動画ファイルの準備
 
-HLS形式の動画ファイルを `static/stream/` ディレクトリに配置してください。各動画フォルダには以下のファイルが必要です：
+HLS形式の動画ファイルをGoogle Cloud Storageバケットに以下の階層構造でアップロードしてください：
 
+```
+your-bucket/
+├── 2025-09-09/              # 日付ディレクトリ
+│   ├── 番組名1/
+│   │   ├── video.m3u8       # HLSプレイリストファイル
+│   │   ├── video000.ts      # 動画セグメントファイル
+│   │   ├── video001.ts
+│   │   └── ...
+│   └── 番組名2/
+│       ├── video.m3u8
+│       ├── video000.ts
+│       └── ...
+└── 2025-09-10/
+    └── ...
+```
+
+各動画フォルダには以下のファイルが必要です：
 - `video.m3u8` - HLSプレイリストファイル
 - `video000.ts`, `video001.ts`, ... - 動画セグメントファイル
 
@@ -107,7 +157,7 @@ docker-compose exec hls-striming bash
 go mod download
 
 # アプリケーションの起動
-go run .
+go run ./cmd/server
 ```
 
 ### ローカル環境で直接起動する場合
@@ -119,37 +169,165 @@ cd hls-streaming
 # 依存関係のインストール
 go mod download
 
+# ビルド
+go build -o bin/server ./cmd/server
+
 # アプリケーションの起動
-go run .
+./bin/server
+
+# または直接実行
+go run ./cmd/server
 ```
 
 ## アクセス方法
 
 アプリケーション起動後、以下のURLにアクセスしてください：
 
-- **Webプレイヤー**: http://localhost:8080 (Docker) / http://localhost:8000 (ローカル)
+- **Webプレイヤー**: http://localhost:8080
 - **HLSプレイリスト**: http://localhost:8080/live/video.m3u8
 - **ストリーム状態確認**: http://localhost:8080/live/status
 
-## 主要な機能
+## API エンドポイント
 
-### エンドポイント
+| メソッド | エンドポイント | 説明 | レスポンス |
+|---------|---------------|------|-----------|
+| GET | `/` | フロントエンドUI配信 | HTML |
+| GET | `/live/video.m3u8` | ライブストリーミングプレイリスト | M3U8 |
+| HEAD | `/live/status` | ストリーム状態確認 | 200/204 |
+| POST | `/api/refresh-schedule` | 番組表手動更新 | JSON |
+| GET | `/api/schedule` | 現在の番組表取得 | JSON |
+| POST | `/api/schedule?date=YYYY-MM-DD` | 番組追加 | JSON |
+| GET | `/static/*` | 静的ファイル配信 | File |
 
-- `GET /` - HLSプレイヤーのWebページ
-- `GET /live/video.m3u8` - ライブストリーム用のHLSプレイリスト
-- `HEAD /live/status` - ストリーム状態確認
-- `GET /static/*` - 静的ファイルの配信
+### 番組追加APIの使用例
+
+```bash
+curl -X POST "http://localhost:8080/api/schedule?date=2025-09-09" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start_time": "2025-09-09T15:00:00+09:00",
+    "duration_sec": 1800,
+    "type": "video",
+    "path_template": "example-program",
+    "title": "サンプル番組"
+  }'
+```
 
 ### 動作仕様
 
-- セグメント長: 12秒
+- セグメント長: 3秒（定数）
 - プレイリスト長: 15セグメント
-- スケジュールはFirestoreから日次で取得
+- スケジュールはFirestoreから5分間隔で自動更新
 - 番組間の待機時間は静的画像を表示
+- 署名付きURL有効期限: 3分
+- 番組切り替え時の継続性保証（EXT-X-DISCONTINUITY使用）
 
-## 依存関係
+## 技術スタック
 
-- Go 1.25.0
-- Gin Web Framework
-- Google Cloud Firestore
-- godotenv（環境変数管理）
+### バックエンド
+- **Go 1.25.0**: メインプログラミング言語
+- **Gin**: HTTPウェブフレームワーク
+- **Google Cloud SDK**: GCS・Firestore連携
+
+### 主要ライブラリ
+- `cloud.google.com/go/firestore` - Firestore操作
+- `cloud.google.com/go/storage` - Google Cloud Storage操作
+- `github.com/gin-gonic/gin` - HTTPフレームワーク
+- `github.com/joho/godotenv` - 環境変数管理
+
+### インフラストラクチャ
+- **Google Cloud Storage**: メディアファイルストレージ
+- **Firestore**: 番組スケジュールデータベース
+- **FFmpeg**: メディア変換エンジン（optional）
+- **Docker**: コンテナ化デプロイ
+
+### 開発・テスト
+- **Go Testing**: 単体テスト・統合テスト
+- **Go Modules**: 依存関係管理
+
+## 主要機能
+
+### 1. HLSストリーミング配信
+- リアルタイム番組スケジュール管理
+- M3U8プレイリスト動的生成
+- セグメント署名付きURL生成
+- 番組切り替え時の継続性保証
+
+### 2. 番組スケジュール管理
+- Firestoreベース番組データ管理
+- 自動スケジュール更新（5分間隔）
+- スレッドセーフなスケジュールアクセス
+- タイムゾーン対応（JST）
+
+### 3. クラウド統合
+- Google Cloud Storage連携
+- Firestore番組データベース
+- 署名付きURL（3分有効期限）
+
+### 4. API機能
+- 番組表取得・更新
+- 番組追加
+- ストリーム状態確認
+
+## 開発・運用
+
+### ローカル開発
+```bash
+# 依存関係インストール
+go mod tidy
+
+# テスト実行
+go test ./test/... -v
+
+# ビルド
+go build -o bin/server ./cmd/server
+
+# 実行
+./bin/server
+```
+
+### Docker運用
+```bash
+# イメージビルド・起動
+docker-compose up --build
+
+# バックグラウンド実行
+docker-compose up -d
+```
+
+### テスト戦略
+- **Unit Tests**: 各レイヤーの独立テスト (`test/domain_test.go`)
+- **Integration Tests**: 外部サービス連携テスト (`test/repository_test.go`)
+- **Media Tests**: FFmpeg連携テスト (`test/media_test.go`)
+
+## トラブルシューティング
+
+### よくある問題
+1. **認証エラー**: GCS認証情報の確認
+   - `credentials/` ディレクトリに正しいサービスアカウントキーがあるか確認
+   - `GOOGLE_APPLICATION_CREDENTIALS` 環境変数の設定確認
+
+2. **番組データ未取得**: Firestore接続・権限確認
+   - Firestoreが有効化されているか確認
+   - `schedules` コレクションに日付ドキュメントが存在するか確認
+   - サービスアカウントにFirestore権限があるか確認
+
+3. **動画ファイル取得エラー**: GCS設定確認
+   - バケット名が正しく設定されているか確認
+   - ファイル階層（日付/番組名/video.m3u8）が正しいか確認
+   - CORS設定が適用されているか確認（`gcs_cors_setting.json`）
+
+4. **プレイリスト生成エラー**: M3U8ファイル形式確認
+   - GCS上のM3U8ファイルが正しい形式か確認
+   - セグメントファイル（.ts）が存在するか確認
+
+### ログレベル
+- `INFO`: 通常運用情報（番組表更新、プレイリスト生成など）
+- `WARN`: 注意が必要な状況
+- `ERROR`: エラー・例外発生（ファイル取得失敗、認証エラーなど）
+
+### パフォーマンス最適化
+- GCS署名付きURLキャッシュの実装
+- Firestoreクエリの最適化
+- 並行処理の活用
+- メモリ使用量の監視
