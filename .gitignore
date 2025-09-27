@@ -68,3 +68,6 @@ hls-streaming/bin/server
 CLAUDE.md
 .claude
 .serena
+test_data
+test_output
+test

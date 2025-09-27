@@ -71,6 +71,7 @@
                 hls.attachMedia(video);
                 
                 hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    console.log('[DEBUG] マニフェスト解析完了');
                     // 動画が正常に読み込まれた場合
                     showVideo();
                     video.play().catch(error => {
@@ -98,8 +99,43 @@
                     }
                 });
 
-                hls.on(Hls.Events.FRAG_LOADED, function() {
-                    // フラグメント読み込み時の処理は削除
+                // プレイリスト更新イベント
+                hls.on(Hls.Events.LEVEL_UPDATED, function(event, data) {
+                    console.log('[DEBUG] プレイリスト更新:', {
+                        level: data.level,
+                        segments: data.details.fragments.length,
+                        live: data.details.live,
+                        endSN: data.details.endSN
+                    });
+                });
+
+                // セグメント読み込み開始
+                hls.on(Hls.Events.FRAG_LOADING, function(event, data) {
+                    console.log('[DEBUG] セグメント読み込み開始:', data.frag.url);
+                });
+
+                // セグメント読み込み完了
+                hls.on(Hls.Events.FRAG_LOADED, function(event, data) {
+                    console.log('[DEBUG] セグメント読み込み完了:', data.frag.url);
+                });
+
+                // 不連続性検出
+                hls.on(Hls.Events.LEVEL_PTS_UPDATED, function(event, data) {
+                    console.log('[DEBUG] PTS更新:', data);
+                });
+
+                // バッファ状態の監視
+                hls.on(Hls.Events.BUFFER_APPENDED, function(event, data) {
+                    console.log('[DEBUG] バッファ追加:', {
+                        type: data.type,
+                        timeRanges: video.buffered.length > 0 ? 
+                            `${video.buffered.start(0)}-${video.buffered.end(video.buffered.length-1)}` : 'empty'
+                    });
+                });
+
+                // メタデータ解析
+                hls.on(Hls.Events.FRAG_PARSING_METADATA, function(event, data) {
+                    console.log('[DEBUG] メタデータ解析:', data);
                 });
 
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -118,12 +154,14 @@
         }
 
         function showVideo() {
+            console.log('[DEBUG] 動画表示に切り替え');
             video.style.display = 'block';
             staticImage.style.display = 'none';
             message.style.display = 'none';
         }
 
         function showStaticImage() {
+            console.log('[DEBUG] 静的画像表示に切り替え');
             video.style.display = 'none';
             staticImage.style.display = 'block';
             message.style.display = 'block';
@@ -136,19 +174,24 @@
         setInterval(() => {
             if (document.hidden) return;
             
+            console.log('[DEBUG] ストリーム状態チェック開始');
             fetch(statusUrl, { method: 'HEAD' })
                 .then(response => {
+                    console.log('[DEBUG] ストリーム状態レスポンス:', response.status);
                     if (response.status === 200) {
                         // 番組がある場合 → 動画表示（既に表示中なら何もしない）
                         if (staticImage.style.display !== 'none') {
+                            console.log('[DEBUG] 番組開始検出 - HLS再セットアップ');
                             setupHLS();
                         }
                     } else {
                         // 番組がない場合（204 No Content等） → 静的画像表示
+                        console.log('[DEBUG] 番組なし - 静的画像表示');
                         showStaticImage();
                     }
                 })
-                .catch(() => {
+                .catch((error) => {
+                    console.log('[DEBUG] ストリーム状態チェックエラー:', error);
                     showStaticImage();
                 });
         }, 5000);  // 5秒間隔に変更
