@@ -99,7 +99,7 @@ PORT=8080
 #### Google Cloud Storage
 1. GCSバケットを作成
 2. 動画ファイルをバケットにアップロード（日付/番組名の階層構造）
-3. CORS設定を適用（`gcs_cors_setting.json` を使用）
+3. CORS設定を適用
 4. サービスアカウントにStorage Object Viewerロールを付与
 
 ### 3. Firestoreデータ構造
@@ -296,62 +296,3 @@ curl -X POST "http://localhost:8080/api/upload-video" \
 - 動画アップロード・変換
 - ストリーム状態確認
 
-## 開発・運用
-
-### 開発・デバッグ
-```bash
-# 依存関係インストール
-docker-compose exec hls-streaming go mod tidy
-
-# テスト実行
-docker-compose exec hls-streaming go test ./test/... -v
-
-# コンテナ内でのシェルアクセス
-docker-compose exec hls-streaming bash
-
-# イメージの再ビルドと起動
-docker-compose up --build -d
-```
-
-### テスト戦略
-- **Unit Tests**: 各レイヤーの独立テスト (`test/domain_test.go`)
-- **Integration Tests**: 外部サービス連携テスト (`test/repository_test.go`)
-- **Media Tests**: FFmpeg連携テスト (`test/media_test.go`)
-
-## トラブルシューティング
-
-### よくある問題
-1. **認証エラー**: GCS認証情報の確認
-   - `credentials/` ディレクトリに正しいサービスアカウントキーがあるか確認
-   - `GOOGLE_APPLICATION_CREDENTIALS` 環境変数の設定確認
-
-2. **番組データ未取得**: Firestore接続・権限確認
-   - Firestoreが有効化されているか確認
-   - `schedules` コレクションに日付ドキュメントが存在するか確認
-   - サービスアカウントにFirestore権限があるか確認
-
-3. **動画ファイル取得エラー**: GCS設定確認
-   - バケット名が正しく設定されているか確認
-   - ファイル階層（日付/番組名/video.m3u8）が正しいか確認
-   - CORS設定が適用されているか確認（`gcs_cors_setting.json`）
-
-4. **プレイリスト生成エラー**: M3U8ファイル形式確認
-   - GCS上のM3U8ファイルが正しい形式か確認
-   - セグメントファイル（.ts）が存在するか確認
-
-5. **動画アップロードエラー**: ファイル・変換設定確認
-   - アップロードファイルサイズが100MB以下か確認
-   - FFmpegが正しくインストールされているか確認
-   - 一時ディレクトリの書き込み権限があるか確認
-   - MP4ファイル形式が正しいか確認（H.264コーデック推奨）
-
-### ログレベル
-- `INFO`: 通常運用情報（番組表更新、プレイリスト生成など）
-- `WARN`: 注意が必要な状況
-- `ERROR`: エラー・例外発生（ファイル取得失敗、認証エラーなど）
-
-### パフォーマンス最適化
-- GCS署名付きURLキャッシュの実装
-- Firestoreクエリの最適化
-- 並行処理の活用
-- メモリ使用量の監視
