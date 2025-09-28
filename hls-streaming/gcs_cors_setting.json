@@ -1,8 +1,0 @@
-[
-	{
-		"maxAgeSeconds": 3600, "method": ["GET", "POST", "PUT", "DELETE"],
-		"origin": ["http://localhost:8080","https://hls-streaming-hls-striming-1023463292830.us-east1.run.app"],
-		"responseHeader": ["Content-Type", "Access-Control-Allow-Origin"]
-	}
-]
-
