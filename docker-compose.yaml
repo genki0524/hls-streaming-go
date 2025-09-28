@@ -1,8 +1,0 @@
-services:
-  hls-striming:
-    container_name: hls-striming
-    image: golang:1.25.0
-    working_dir: /app
-    volumes:
-      - .:/app
-    tty: true

@@ -1,0 +1,18 @@
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+COPY ./ /app/
+
+EXPOSE $PORT
+
+RUN apk update &&\
+    apk add --no-cache ffmpeg &&\
+    rm -rf /var/cache/apk/*
+
+RUN apk add --no-cache tzdata && \
+    cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime && \
+    echo "Asia/Tokyo" > /etc/timezone && \
+    apk del tzdata
+
+CMD ["sh", "-c", "go build -o ./bin/server ./cmd/server/main.go && ./bin/server"]

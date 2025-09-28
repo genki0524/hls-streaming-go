@@ -1,0 +1,10 @@
+services:
+  hls-striming:
+    container_name: hls-striming
+    build:
+      dockerfile: dockerfile
+    volumes:
+      - ./:/app/
+    tty: true
+    ports:
+      - 8080:8080
