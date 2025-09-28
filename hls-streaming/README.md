@@ -16,15 +16,6 @@ HLS（HTTP Live Streaming）を使用したライブストリーミングサー�
 - API経由での番組追加機能
 - 動画ファイルアップロードと自動HLS変換機能
 
-## アーキテクチャ
-
-### 設計原則
-- **Clean Architecture**: レイヤー分離による高い保守性と拡張性
-- **Domain-Driven Design (DDD)**: ビジネスロジックの中央集権化
-- **Dependency Injection**: 疎結合設計による高いテスタビリティ
-- **Repository Pattern**: データアクセス層の抽象化
-- **Interface Segregation**: 適切な抽象化による依存関係の制御
-
 ### ディレクトリ構成
 
 ```
