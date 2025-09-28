@@ -73,3 +73,4 @@ test_output
 test
 qiita.md
 static
+gcs_cors_setting.json

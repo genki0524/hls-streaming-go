@@ -14,6 +14,7 @@ HLS（HTTP Live Streaming）を使用したライブストリーミングサー�
 - Clean Architecture設計による高い保守性
 - VOD（Video On Demand）対応
 - API経由での番組追加機能
+- 動画ファイルアップロードと自動HLS変換機能
 
 ## アーキテクチャ
 
@@ -40,7 +41,8 @@ hls-streaming/                       # プロジェクトルート
 │   │   └── gcs.go                   # GCSファイル操作・署名付きURL・ダウンロード
 │   ├── service/                     # 🔧 アプリケーションサービス層（ビジネスフロー）
 │   │   ├── schedule.go              # 番組管理・定期更新・並行処理・状態管理
-│   │   └── streaming.go             # ストリーミング・プレイリスト生成・切り替え制御
+│   │   ├── streaming.go             # ストリーミング・プレイリスト生成・切り替え制御
+│   │   └── media.go                 # メディア処理・動画アップロード・HLS変換統合
 │   ├── handler/                     # 🌐 プレゼンテーション層（HTTP境界）
 │   │   └── http.go                  # RESTエンドポイント・ルーティング・JSON変換
 │   └── media/                       # 🎬 メディア処理層（外部ツール連携）
@@ -61,6 +63,18 @@ hls-streaming/                       # プロジェクトルート
 
 **依存関係フロー**: Handler → Service → Repository → Domain
 **データフロー**: GCS/Firestore → Repository → Service → Handler → Client
+
+### システム構成図
+
+![アーキテクチャ](./アーキテクチャ.jpg)
+
+システム全体の構成は上図の通りです：
+- **Actor（ユーザー）**: Webブラウザからアクセス
+- **フロントエンド**: index.htmlによるHLSプレイヤー
+- **バックエンド（Gin）**: Go製のAPIサーバー
+- **Cloud Storage**: 動画ファイル（HLS形式）の保存
+- **FireStore**: 番組スケジュールデータの管理
+- **CloudRun**: コンテナベースのデプロイ（オプション）
 
 ## 起動に必要なこと
 
@@ -141,7 +155,7 @@ your-bucket/
 
 ## 起動方法
 
-### Docker Composeを使用する場合（推奨）
+Docker Composeを使用してアプリケーションを起動します：
 
 ```bash
 # プロジェクトディレクトリに移動
@@ -150,34 +164,17 @@ cd hls-streaming
 # コンテナの起動
 docker-compose up -d
 
-# コンテナ内でのコマンド実行
-docker-compose exec hls-striming bash
+# ログの確認
+docker-compose logs -f
 
-# 依存関係のインストール
-go mod download
-
-# アプリケーションの起動
-go run ./cmd/server
+# コンテナの停止
+docker-compose down
 ```
 
-### ローカル環境で直接起動する場合
-
-```bash
-# プロジェクトディレクトリに移動
-cd hls-streaming
-
-# 依存関係のインストール
-go mod download
-
-# ビルド
-go build -o bin/server ./cmd/server
-
-# アプリケーションの起動
-./bin/server
-
-# または直接実行
-go run ./cmd/server
-```
+**補足**:
+- 初回起動時は依存関係のダウンロードとビルドに時間がかかります
+- アプリケーションは自動的にポート8080で起動します
+- 環境変数は `.env` ファイルから自動的に読み込まれます
 
 ## アクセス方法
 
@@ -197,6 +194,7 @@ go run ./cmd/server
 | POST | `/api/refresh-schedule` | 番組表手動更新 | JSON |
 | GET | `/api/schedule` | 現在の番組表取得 | JSON |
 | POST | `/api/schedule?date=YYYY-MM-DD` | 番組追加 | JSON |
+| POST | `/api/upload-video` | 動画ファイルアップロード・HLS変換 | JSON |
 | GET | `/static/*` | 静的ファイル配信 | File |
 
 ### 番組追加APIの使用例
@@ -212,6 +210,28 @@ curl -X POST "http://localhost:8080/api/schedule?date=2025-09-09" \
     "title": "サンプル番組"
   }'
 ```
+
+### 動画アップロードAPIの使用例
+
+動画ファイル（MP4形式）をアップロードし、自動的にHLS形式に変換してGCSに保存します：
+
+```bash
+curl -X POST "http://localhost:8080/api/upload-video" \
+  -F "video=@/path/to/your/video.mp4" \
+  -F "date=2025-09-09" \
+  -F "program_name=example-program"
+```
+
+**パラメータ**:
+- `video`: アップロードする動画ファイル（MP4形式推奨、最大100MB）
+- `date`: 配信日（YYYY-MM-DD形式）
+- `program_name`: 番組名（英数字・ハイフン推奨）
+
+**処理フロー**:
+1. MP4動画ファイルを受信
+2. FFmpegでHLS形式（M3U8 + TSセグメント）に変換
+3. 変換されたファイルをGCSの `{date}/{program_name}/` に自動アップロード
+4. 番組スケジュールに手動で追加する必要があります
 
 ### 動作仕様
 
@@ -264,35 +284,33 @@ curl -X POST "http://localhost:8080/api/schedule?date=2025-09-09" \
 - Firestore番組データベース
 - 署名付きURL（3分有効期限）
 
-### 4. API機能
+### 4. メディア処理
+- MP4からHLS形式への自動変換
+- 動画ファイルアップロード機能
+- セグメント分割（2秒単位）
+- GCSへの自動アップロード
+
+### 5. API機能
 - 番組表取得・更新
 - 番組追加
+- 動画アップロード・変換
 - ストリーム状態確認
 
 ## 開発・運用
 
-### ローカル開発
+### 開発・デバッグ
 ```bash
 # 依存関係インストール
-go mod tidy
+docker-compose exec hls-streaming go mod tidy
 
 # テスト実行
-go test ./test/... -v
+docker-compose exec hls-streaming go test ./test/... -v
 
-# ビルド
-go build -o bin/server ./cmd/server
+# コンテナ内でのシェルアクセス
+docker-compose exec hls-streaming bash
 
-# 実行
-./bin/server
-```
-
-### Docker運用
-```bash
-# イメージビルド・起動
-docker-compose up --build
-
-# バックグラウンド実行
-docker-compose up -d
+# イメージの再ビルドと起動
+docker-compose up --build -d
 ```
 
 ### テスト戦略
@@ -320,6 +338,12 @@ docker-compose up -d
 4. **プレイリスト生成エラー**: M3U8ファイル形式確認
    - GCS上のM3U8ファイルが正しい形式か確認
    - セグメントファイル（.ts）が存在するか確認
+
+5. **動画アップロードエラー**: ファイル・変換設定確認
+   - アップロードファイルサイズが100MB以下か確認
+   - FFmpegが正しくインストールされているか確認
+   - 一時ディレクトリの書き込み権限があるか確認
+   - MP4ファイル形式が正しいか確認（H.264コーデック推奨）
 
 ### ログレベル
 - `INFO`: 通常運用情報（番組表更新、プレイリスト生成など）
