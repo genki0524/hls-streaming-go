@@ -9,6 +9,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/genki0524/hls_striming_go/internal/domain"
 	"github.com/genki0524/hls_striming_go/internal/handler"
+	"github.com/genki0524/hls_striming_go/internal/media"
 	"github.com/genki0524/hls_striming_go/internal/repository"
 	"github.com/genki0524/hls_striming_go/internal/service"
 	"github.com/genki0524/hls_striming_go/pkg/config"
@@ -37,9 +38,11 @@ func main() {
 
 	scheduleRepo := repository.NewFirestoreScheduleRepository(firestoreClient)
 	gcsRepo := repository.NewGCSRepository(gcsClient)
+	ffmpegService := media.NewFFmpegService()
 
 	scheduleService := service.NewScheduleService(scheduleRepo)
 	streamingService := service.NewStreamingService(gcsRepo)
+	mediaService := service.NewMediaService(gcsRepo, ffmpegService)
 
 	if err := scheduleService.RefreshFromRepository(ctx); err != nil {
 		log.Printf("初回番組表読み込みに失敗: %v", err)
@@ -48,7 +51,7 @@ func main() {
 
 	go scheduleService.StartPeriodicRefresh(ctx, 5*time.Minute)
 
-	httpHandler := handler.NewHTTPHandler(scheduleService, streamingService)
+	httpHandler := handler.NewHTTPHandler(scheduleService, streamingService, mediaService)
 
 	router := gin.Default()
 	httpHandler.SetupRoutes(router)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -22,14 +23,87 @@ func NewGCSRepository(client *storage.Client) *GCSRepository {
 }
 
 func (r *GCSRepository) UploadFile(ctx context.Context, bucket, object, filePath string) error {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*300) // 大きなファイル用に5分
 	defer cancel()
 
-	o := r.client.Bucket(bucket).Object(object)
-	o = o.If(storage.Conditions{DoesNotExist: true})
+	// ローカルファイルを開く
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("ファイルオープンエラー: %w", err)
+	}
+	defer file.Close()
 
-	wc := o.NewWriter(ctx)
-	defer wc.Close()
+	// GCSオブジェクトライターを作成
+	obj := r.client.Bucket(bucket).Object(object)
+	writer := obj.NewWriter(ctx)
+	defer writer.Close()
+
+	// ファイルの内容をGCSにコピー
+	if _, err := io.Copy(writer, file); err != nil {
+		return fmt.Errorf("ファイルアップロードエラー: %w", err)
+	}
+
+	return nil
+}
+
+// UploadStream はio.Readerから動画データを受け取ってGCSにアップロードします
+func (r *GCSRepository) UploadStream(ctx context.Context, bucket, object string, reader io.Reader) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*300) // 大きなファイル用に5分
+	defer cancel()
+
+	// GCSオブジェクトライターを作成
+	obj := r.client.Bucket(bucket).Object(object)
+	writer := obj.NewWriter(ctx)
+	defer writer.Close()
+
+	// ストリームの内容をGCSにコピー
+	if _, err := io.Copy(writer, reader); err != nil {
+		return fmt.Errorf("ストリームアップロードエラー: %w", err)
+	}
+
+	return nil
+}
+
+// UploadVideoData はバイト配列の動画データをGCSにアップロードします
+func (r *GCSRepository) UploadVideoData(ctx context.Context, bucket, object string, data []byte) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*300) // 大きなファイル用に5分
+	defer cancel()
+
+	// GCSオブジェクトライターを作成
+	obj := r.client.Bucket(bucket).Object(object)
+	writer := obj.NewWriter(ctx)
+	defer writer.Close()
+
+	// バイトデータを書き込み
+	if _, err := writer.Write(data); err != nil {
+		return fmt.Errorf("動画データアップロードエラー: %w", err)
+	}
+
+	return nil
+}
+
+// UploadVideoWithMetadata はメタデータ付きで動画データをアップロードします
+func (r *GCSRepository) UploadVideoWithMetadata(ctx context.Context, bucket, object string, reader io.Reader, contentType string, metadata map[string]string) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*300) // 大きなファイル用に5分
+	defer cancel()
+
+	// GCSオブジェクトライターを作成
+	obj := r.client.Bucket(bucket).Object(object)
+	writer := obj.NewWriter(ctx)
+	defer writer.Close()
+
+	// メタデータを設定
+	if contentType != "" {
+		writer.ContentType = contentType
+	}
+	if metadata != nil {
+		writer.Metadata = metadata
+	}
+
+	// ストリームの内容をGCSにコピー
+	if _, err := io.Copy(writer, reader); err != nil {
+		return fmt.Errorf("メタデータ付きアップロードエラー: %w", err)
+	}
 
 	return nil
 }
@@ -65,9 +139,9 @@ func (r *GCSRepository) CreateSignedURL(bucket, object string) (string, error) {
 	return u, nil
 }
 
-func (r *GCSRepository) GetM3U8WithSignedURLs(bucket, date, programName string) (*domain.M3U8Playlist, error) {
+func (r *GCSRepository) GetM3U8WithSignedURLs(ctx context.Context, bucket, date, programName string) (*domain.M3U8Playlist, error) {
 	resourcePath := date + "/" + programName
-	m3u8Data, err := r.DownloadFileToMemory(context.Background(), bucket, resourcePath+"/video.m3u8")
+	m3u8Data, err := r.DownloadFileToMemory(ctx, bucket, resourcePath+"/video.m3u8")
 	if err != nil {
 		return nil, fmt.Errorf("downloadFileIntoMemory: %w", err)
 	}
@@ -87,4 +161,30 @@ func (r *GCSRepository) GetM3U8WithSignedURLs(bucket, date, programName string) 
 	}
 
 	return playlist, nil
+}
+
+func (r *GCSRepository) ObjectExists(ctx context.Context, bucket, object string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10) // 存在チェックは短時間で
+	defer cancel()
+
+	obj := r.client.Bucket(bucket).Object(object)
+	_, err := obj.Attrs(ctx)
+	if err != nil {
+		if err == storage.ErrObjectNotExist {
+			return false, nil
+		}
+		return false, fmt.Errorf("オブジェクト存在チェックエラー: %w", err)
+	}
+	return true, nil
+}
+
+func (r *GCSRepository) DeleteObject(ctx context.Context, bucket, object string) error {
+	ctx, cancel := context.WithTimeout(ctx, time.Second*30)
+	defer cancel()
+
+	obj := r.client.Bucket(bucket).Object(object)
+	if err := obj.Delete(ctx); err != nil {
+		return fmt.Errorf("オブジェクト削除エラー: %w", err)
+	}
+	return nil
 }

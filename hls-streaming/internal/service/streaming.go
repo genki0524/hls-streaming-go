@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
@@ -66,7 +67,7 @@ func (s *StreamingService) GenerateStaticImagePlaylist(schedule []domain.Program
 	return strings.Join(m3u8Content, "\n") + "\n"
 }
 
-func (s *StreamingService) GenerateVODPlaylist(schedule []domain.ProgramItem) (string, error) {
+func (s *StreamingService) GenerateVODPlaylist(ctx context.Context, schedule []domain.ProgramItem) (string, error) {
 	jst := time.FixedZone("JST", 9*60*60)
 	now := time.Now().In(jst)
 
@@ -80,10 +81,10 @@ func (s *StreamingService) GenerateVODPlaylist(schedule []domain.ProgramItem) (s
 	}
 
 	bucket := os.Getenv("BUCKET")
-	todayString := "2025-09-09" // TODO: 実際の日付を使用
+	todayString := now.Format("2006-01-02")
 	programName := currentProgram.Title
 
-	playlist, err := s.gcsRepo.GetM3U8WithSignedURLs(bucket, todayString, programName)
+	playlist, err := s.gcsRepo.GetM3U8WithSignedURLs(ctx, bucket, todayString, programName)
 	if err != nil {
 		log.Printf("m3u8ファイルの読み込みに失敗: %v", err)
 		return s.GenerateStaticImagePlaylist(schedule), nil
@@ -117,19 +118,19 @@ func (s *StreamingService) GenerateVODPlaylist(schedule []domain.ProgramItem) (s
 	if endIndex == len(playlist.Segments)-1 && (endIndex+1)-startIndex != domain.PlaylistLength {
 		if currentProgramIndex >= 0 && currentProgramIndex+1 < len(schedule) {
 			nextProgram := &schedule[currentProgramIndex+1]
-			s.appendNextProgramSegments(&m3u8Content, nextProgram, bucket, todayString, startIndex, endIndex)
+			s.appendNextProgramSegments(ctx, &m3u8Content, nextProgram, bucket, todayString, startIndex, endIndex)
 		}
 	}
 
 	return strings.Join(m3u8Content, "\n") + "\n", nil
 }
 
-func (s *StreamingService) appendNextProgramSegments(m3u8Content *[]string, nextProgram *domain.ProgramItem, bucket, todayString string, startIndex, endIndex int) {
+func (s *StreamingService) appendNextProgramSegments(ctx context.Context, m3u8Content *[]string, nextProgram *domain.ProgramItem, bucket, todayString string, startIndex, endIndex int) {
 	*m3u8Content = append(*m3u8Content, "#EXT-X-DISCONTINUITY")
 
 	neededSegments := domain.PlaylistLength - ((endIndex + 1) - startIndex)
 
-	nextPlaylist, err := s.gcsRepo.GetM3U8WithSignedURLs(bucket, todayString, nextProgram.Title)
+	nextPlaylist, err := s.gcsRepo.GetM3U8WithSignedURLs(ctx, bucket, todayString, nextProgram.Title)
 	if err != nil {
 		log.Printf("次の番組のm3u8ファイルの読み込みに失敗: %v", err)
 		return
