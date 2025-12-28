@@ -7,24 +7,24 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/genki0524/hls_striming_go/internal/domain/repository"
 	"github.com/genki0524/hls_striming_go/internal/media"
-	"github.com/genki0524/hls_striming_go/internal/repository"
 )
 
 type MediaService struct {
-	gcsRepo       *repository.GCSRepository
+	storage       repository.StorageRepository
 	ffmpegService *media.FFmpegService
 }
 
-func NewMediaService(gcsRepo *repository.GCSRepository, ffmpegService *media.FFmpegService) *MediaService {
+func NewMediaService(storage repository.StorageRepository, ffmpegService *media.FFmpegService) *MediaService {
 	return &MediaService{
-		gcsRepo:       gcsRepo,
+		storage:       storage,
 		ffmpegService: ffmpegService,
 	}
 }
 func (s *MediaService) UploadVideo(ctx context.Context, object string, data []byte) error {
 	bucket := os.Getenv("BUCKET")
-	if err := s.gcsRepo.UploadVideoData(ctx, bucket, object, data); err != nil {
+	if err := s.storage.UploadVideoData(ctx, bucket, object, data); err != nil {
 		return fmt.Errorf("動画のアップロードでエラーが発生しました")
 	}
 	return nil
@@ -58,7 +58,7 @@ func (s *MediaService) ConvertAndUploadHLS(ctx context.Context, videoData []byte
 	}
 
 	m3u8Object := basePath + "/video.m3u8"
-	if err := s.gcsRepo.UploadVideoData(ctx, bucket, m3u8Object, m3u8Data); err != nil {
+	if err := s.storage.UploadVideoData(ctx, bucket, m3u8Object, m3u8Data); err != nil {
 		return fmt.Errorf("m3u8ファイルアップロードエラー: %w", err)
 	}
 
@@ -77,7 +77,7 @@ func (s *MediaService) ConvertAndUploadHLS(ctx context.Context, videoData []byte
 
 			fileName := d.Name()
 			tsObject := basePath + "/" + fileName
-			if err := s.gcsRepo.UploadVideoData(ctx, bucket, tsObject, tsData); err != nil {
+			if err := s.storage.UploadVideoData(ctx, bucket, tsObject, tsData); err != nil {
 				return fmt.Errorf("tsファイルアップロードエラー (%s): %w", fileName, err)
 			}
 		}

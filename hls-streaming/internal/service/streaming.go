@@ -12,15 +12,15 @@ import (
 	"time"
 
 	"github.com/genki0524/hls_striming_go/internal/domain"
-	"github.com/genki0524/hls_striming_go/internal/repository"
+	"github.com/genki0524/hls_striming_go/internal/infrastructure"
 	"github.com/joho/godotenv"
 )
 
 type StreamingService struct {
-	gcsRepo *repository.GCSRepository
+	gcsRepo *infrastructure.GCSRepository
 }
 
-func NewStreamingService(gcsRepo *repository.GCSRepository) *StreamingService {
+func NewStreamingService(gcsRepo *infrastructure.GCSRepository) *StreamingService {
 	return &StreamingService{
 		gcsRepo: gcsRepo,
 	}
