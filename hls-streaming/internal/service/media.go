@@ -7,16 +7,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/genki0524/hls_striming_go/internal/domain/repository"
+	"github.com/genki0524/hls_striming_go/internal/infrastructure"
 	"github.com/genki0524/hls_striming_go/internal/media"
 )
 
 type MediaService struct {
-	storage       repository.StorageRepository
+	storage       *infrastructure.GCSRepository
 	ffmpegService *media.FFmpegService
 }
 
-func NewMediaService(storage repository.StorageRepository, ffmpegService *media.FFmpegService) *MediaService {
+func NewMediaService(storage *infrastructure.GCSRepository, ffmpegService *media.FFmpegService) *MediaService {
 	return &MediaService{
 		storage:       storage,
 		ffmpegService: ffmpegService,
