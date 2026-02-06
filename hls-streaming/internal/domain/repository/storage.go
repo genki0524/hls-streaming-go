@@ -14,5 +14,5 @@ type StorageRepository interface {
 	DownloadFile(ctx context.Context, bucket, object string) ([]byte, error)
 
 	GetM3U8WithSignedURLs(ctx context.Context, bucket, date, programName string) (*domain.M3U8Playlist, error)
-	GenerateSignedURL(ctx context.Context, bucket, object string, expiration int) (string, error)
+	GenerateSignedURL(bucket, object string, expiration int) (string, error)
 }
