@@ -9,8 +9,8 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/genki0524/hls_striming_go/internal/domain"
 	"github.com/genki0524/hls_striming_go/internal/handler"
+	"github.com/genki0524/hls_striming_go/internal/infrastructure"
 	"github.com/genki0524/hls_striming_go/internal/media"
-	"github.com/genki0524/hls_striming_go/internal/repository"
 	"github.com/genki0524/hls_striming_go/internal/service"
 	"github.com/genki0524/hls_striming_go/pkg/config"
 	"github.com/gin-gonic/gin"
@@ -36,8 +36,8 @@ func main() {
 	}
 	defer gcsClient.Close()
 
-	scheduleRepo := repository.NewFirestoreScheduleRepository(firestoreClient)
-	gcsRepo := repository.NewGCSRepository(gcsClient)
+	scheduleRepo := infrastructure.NewFirestoreScheduleRepository(firestoreClient)
+	gcsRepo := infrastructure.NewGCSRepository(gcsClient)
 	ffmpegService := media.NewFFmpegService()
 
 	scheduleService := service.NewScheduleService(scheduleRepo)

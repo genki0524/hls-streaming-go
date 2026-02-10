@@ -1,4 +1,4 @@
-package repository
+package infrastructure
 
 import (
 	"context"
@@ -108,7 +108,7 @@ func (r *GCSRepository) UploadVideoWithMetadata(ctx context.Context, bucket, obj
 	return nil
 }
 
-func (r *GCSRepository) DownloadFileToMemory(ctx context.Context, bucket, object string) ([]byte, error) {
+func (r *GCSRepository) DownloadFile(ctx context.Context, bucket, object string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
 	defer cancel()
 
@@ -125,8 +125,8 @@ func (r *GCSRepository) DownloadFileToMemory(ctx context.Context, bucket, object
 	return data, nil
 }
 
-func (r *GCSRepository) CreateSignedURL(bucket, object string) (string, error) {
-	expiresTime := 3 * time.Minute
+func (r *GCSRepository) GenerateSignedURL(bucket, object string, expiration int) (string, error) {
+	expiresTime := time.Duration(expiration) * time.Minute
 
 	u, err := r.client.Bucket(bucket).SignedURL(object, &storage.SignedURLOptions{
 		Scheme:  storage.SigningSchemeV4,
@@ -141,9 +141,9 @@ func (r *GCSRepository) CreateSignedURL(bucket, object string) (string, error) {
 
 func (r *GCSRepository) GetM3U8WithSignedURLs(ctx context.Context, bucket, date, programName string) (*domain.M3U8Playlist, error) {
 	resourcePath := date + "/" + programName
-	m3u8Data, err := r.DownloadFileToMemory(ctx, bucket, resourcePath+"/video.m3u8")
+	m3u8Data, err := r.DownloadFile(ctx, bucket, resourcePath+"/video.m3u8")
 	if err != nil {
-		return nil, fmt.Errorf("downloadFileIntoMemory: %w", err)
+		return nil, fmt.Errorf("downloadFile: %w", err)
 	}
 
 	playlist, err := domain.ParseM3U8Content(string(m3u8Data))
@@ -153,7 +153,7 @@ func (r *GCSRepository) GetM3U8WithSignedURLs(ctx context.Context, bucket, date,
 
 	for index, segment := range playlist.Segments {
 		fileName := segment.Filename
-		url, err := r.CreateSignedURL(bucket, resourcePath+"/"+fileName)
+		url, err := r.GenerateSignedURL(bucket, resourcePath+"/"+fileName,3)
 		if err != nil {
 			return nil, fmt.Errorf("createSignedURL: %w", err)
 		}

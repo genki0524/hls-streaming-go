@@ -74,3 +74,5 @@ test
 qiita.md
 static
 gcs_cors_setting.json
+.vscode
+.serena

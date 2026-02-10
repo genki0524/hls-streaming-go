@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"cloud.google.com/go/storage"
-	"github.com/genki0524/hls_striming_go/internal/repository"
+	"github.com/genki0524/hls_striming_go/internal/infrastructure"
 )
 
 func TestGCSRepository_DownloadFileToMemory(t *testing.T) {
@@ -17,12 +17,12 @@ func TestGCSRepository_DownloadFileToMemory(t *testing.T) {
 	}
 	defer client.Close()
 
-	repo := repository.NewGCSRepository(client)
+	repo := infrastructure.NewGCSRepository(client)
 
 	bucket := "generic-a-and-g-storage"
 	object := "2025-09-09/minecraft_1/video.m3u8"
 
-	data, err := repo.DownloadFileToMemory(ctx, bucket, object)
+	data, err := repo.DownloadFile(ctx, bucket, object)
 	if err != nil {
 		t.Logf("ダウンロードテストをスキップ（認証エラーまたはネットワークエラーの可能性）: %v", err)
 		return
@@ -43,12 +43,12 @@ func TestGCSRepository_CreateSignedURL(t *testing.T) {
 	}
 	defer client.Close()
 
-	repo := repository.NewGCSRepository(client)
+	repo := infrastructure.NewGCSRepository(client)
 
 	bucket := "generic-a-and-g-storage"
 	object := "2025-09-09/minecraft_1/video.m3u8"
 
-	url, err := repo.CreateSignedURL(bucket, object)
+	url, err := repo.GenerateSignedURL(bucket, object, 3)
 	if err != nil {
 		t.Logf("署名付きURL生成テストをスキップ（認証エラーまたはネットワークエラーの可能性）: %v", err)
 		return
@@ -69,13 +69,13 @@ func TestGCSRepository_GetM3U8WithSignedURLs(t *testing.T) {
 	}
 	defer client.Close()
 
-	repo := repository.NewGCSRepository(client)
+	repo := infrastructure.NewGCSRepository(client)
 
 	bucket := "generic-a-and-g-storage"
 	date := "2025-09-09"
 	programName := "minecraft_1"
 
-	playlist, err := repo.GetM3U8WithSignedURLs(bucket, date, programName)
+	playlist, err := repo.GetM3U8WithSignedURLs(ctx, bucket, date, programName)
 	if err != nil {
 		t.Logf("M3U8取得テストをスキップ（認証エラーまたはネットワークエラーの可能性）: %v", err)
 		return

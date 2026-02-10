@@ -1,4 +1,4 @@
-package repository
+package infrastructure
 
 import (
 	"context"
@@ -72,7 +72,6 @@ func request2ProgramItem(request domain.RequestProgramItem) domain.ProgramItem {
 		StartTime:    request.StartTime,
 		DurationSec:  request.DurationSec,
 		Type:         request.Type,
-		PathTemplate: request.PathTemplate,
 		Title:        request.Title,
 	}
 }

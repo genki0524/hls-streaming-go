@@ -9,7 +9,6 @@ type RequestProgramItem struct {
 	StartTime    string `json:"start_time"`
 	DurationSec  int32  `json:"duration_sec"`
 	Type         string `json:"type"`
-	PathTemplate string `json:"path_template"`
 	Title        string `json:"title"`
 }
 
@@ -21,7 +20,6 @@ type ProgramItem struct {
 	StartTime    string `firestore:"start_time"`
 	DurationSec  int32  `firestore:"duration_sec"`
 	Type         string `firestore:"type"`
-	PathTemplate string `firestore:"path_template"`
 	Title        string `firestore:"title"`
 }
 
