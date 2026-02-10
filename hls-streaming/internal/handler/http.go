@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -51,6 +52,22 @@ func (h *HTTPHandler) getLivePlaylist(c *gin.Context) {
 		log.Printf("プレイリスト生成エラー: %v", err)
 		c.String(http.StatusInternalServerError, "Internal Server Error")
 		return
+	}
+
+	// プレイリストをログファイルに追記
+	logPath := "./test_output/playlist.log"
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Printf("ログファイルオープンエラー: %v", err)
+	} else {
+		defer logFile.Close()
+		timestamp := time.Now().Format("2006-01-02 15:04:05")
+		logEntry := fmt.Sprintf("\n=== %s ===\n%s\n", timestamp, playlist)
+		if _, err := logFile.WriteString(logEntry); err != nil {
+			log.Printf("ログファイル書き込みエラー: %v", err)
+		} else {
+			log.Printf("プレイリストをログファイルに追記しました: %s", logPath)
+		}
 	}
 
 	c.Header("Content-Type", "application/vnd.apple.mpegurl")
